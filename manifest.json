@@ -1,26 +1,30 @@
 {
     "manifest_version": 3,
-    "name": "GM Plugin Example",
+    "name": "Google Meet 中文逐字稿助手",
     "version": "1.0.0",
-    "description": "Minimal cross-browser web extension example (popup, background, content script).",
+    "description": "自動抓取 Google Meet 中文逐字稿，支持導出和第三方 AI 服務",
     "icons": {
         "48": "icons/icon-48.svg",
         "128": "icons/icon-128.svg"
     },
     "action": {
         "default_popup": "popup.html",
-        "default_title": "GM Plugin Example"
+        "default_title": "Google Meet 字幕助手"
     },
     "background": {
         "service_worker": "background.js"
     },
-    "permissions": ["storage", "activeTab", "scripting"],
-    "host_permissions": ["<all_urls>"],
+    "permissions": ["storage", "activeTab", "scripting", "downloads"],
+    "host_permissions": [
+        "https://meet.google.com/*",
+        "https://accounts.google.com/*"
+    ],
     "content_scripts": [
         {
-            "matches": ["<all_urls>"],
+            "matches": ["https://meet.google.com/*"],
             "js": ["content_script.js"],
-            "run_at": "document_idle"
+            "run_at": "document_start",
+            "all_frames": true
         }
     ]
 }
