@@ -21,39 +21,32 @@
 
 ```
 GM_Plugin/
-├── public/
-│   ├── sidepanel.html        # Side panel UI
-│   ├── sidepanel.js          # Side panel logic
-│   └── styles.css            # Modern CSS styling
-├── src/
+├── dist/                      # Extension source files (direct development)
+│   ├── manifest.json         # Chrome extension manifest
 │   ├── content-script.js     # Google Meet DOM monitoring
 │   ├── service-worker.js     # Background service worker
+│   ├── sidepanel.html        # Side panel UI
+│   ├── sidepanel.js          # Side panel logic
+│   ├── styles.css            # Modern CSS styling
 │   └── utils/
 │       ├── storage.js        # Chrome storage utilities
 │       ├── webhook.js        # n8n webhook utilities
 │       └── message.js        # Inter-component messaging
-├── manifest.json             # Chrome extension manifest
-├── package.json              # Dependencies
-└── webpack.config.js         # Build configuration
+├── docs/                      # Documentation
+│   ├── ARCHITECTURE.md       # System architecture
+│   ├── DEVELOPMENT.md        # Development guide
+│   ├── N8N_INTEGRATION.md    # n8n webhook setup
+│   ├── QUICKSTART_ZH.md      # 快速開始（中文）
+│   ├── INSTALL_CHROME.md     # Chrome installation guide
+│   └── DELIVERY.md           # Delivery notes
+├── README.md                 # This file
+├── manifest.json             # Reference copy
+└── package.json              # Project metadata
 ```
 
 ## Installation & Setup
 
-### 1. Install Dependencies
-
-```bash
-npm install
-```
-
-### 2. Build Extension
-
-```bash
-npm run build
-```
-
-Output files will be in the `dist/` folder.
-
-### 3. Load in Chrome
+### 1. Load in Chrome (No Build Required!)
 
 1. Open Chrome and go to `chrome://extensions/`
 2. Enable "Developer mode" (top right)
@@ -61,12 +54,32 @@ Output files will be in the `dist/` folder.
 4. Select the `dist/` folder
 5. The extension will appear in your Chrome toolbar
 
-### 4. Configure n8n Webhook
+### 2. Configure n8n Webhook
 
 1. Click the extension icon or open Google Meet
 2. Click the settings ⚙️ icon in the side panel
 3. Enter your n8n webhook URL
 4. Click "Save Webhook"
+
+## Development
+
+### Edit Files Directly
+
+All source files are in the `dist/` folder. Simply edit them directly:
+
+-   `dist/sidepanel.html` - UI structure
+-   `dist/sidepanel.js` - Side panel logic
+-   `dist/styles.css` - Styling
+-   `dist/content-script.js` - Google Meet monitoring
+-   `dist/service-worker.js` - Background processing
+-   `dist/utils/*.js` - Utility functions
+
+### Reload Extension After Changes
+
+1. Go to `chrome://extensions/`
+2. Find "Google Meet Interview Assistant"
+3. Click the refresh ♻️ icon
+4. Your changes will take effect immediately
 
 ## Usage
 
@@ -77,11 +90,20 @@ Output files will be in the `dist/` folder.
 3. The left panel will automatically capture the conversation
 4. After each Q&A, click "Submit Q&A" to send to n8n
 5. The right panel will update with AI-generated notes and remaining questions
+6. Use the 🌙 moon icon in the header to toggle dark mode
+
+### Dark Mode
+
+The extension includes a built-in dark mode feature:
+
+-   Click the sun/moon icon in the header to toggle
+-   Your preference is automatically saved
+-   Works with all UI components including modals and forms
 
 ### Keyboard Shortcuts
 
 -   `Enter` in webhook input: Save webhook
--   `Ctrl+Shift+Y`: Open side panel (if configured in manifest)
+-   `Enter` in dark mode button area: Toggle theme
 
 ## Architecture
 
@@ -113,6 +135,7 @@ Output files will be in the `dist/` folder.
 │  - Show meeting notes           │
 │  - Configure webhook            │
 │  - Real-time updates            │
+│  - Dark mode toggle             │
 └─────────────────────────────────┘
 ```
 
@@ -164,23 +187,7 @@ Open DevTools (F12) to view logs during development.
 }
 ```
 
-## Development
-
-### Enable Dev Mode
-
-Edit `manifest.json` and add:
-
-```json
-"action": {
-  "default_title": "Open Interview Assistant [DEV]"
-}
-```
-
-### Watch Mode (Auto-rebuild)
-
-```bash
-npm run dev
-```
+## Debugging
 
 ### Debug Service Worker
 
@@ -200,7 +207,7 @@ npm run dev
 
 ## Modular Utilities
 
-### StorageUtil (`src/utils/storage.js`)
+### StorageUtil (`dist/utils/storage.js`)
 
 -   `saveWebhookUrl(url)` - Save webhook endpoint
 -   `getWebhookUrl()` - Retrieve webhook
@@ -208,13 +215,13 @@ npm run dev
 -   `getMeetingNotes()` - Get notes from n8n
 -   `clearAll()` - Debug: clear all storage
 
-### WebhookUtil (`src/utils/webhook.js`)
+### WebhookUtil (`dist/utils/webhook.js`)
 
 -   `sendToWebhook(data, url)` - Send to n8n
 -   `validateWebhookUrl(url)` - URL validation
 -   `parseWebhookResponse(data)` - Parse n8n response
 
-### MessageUtil (`src/utils/message.js`)
+### MessageUtil (`dist/utils/message.js`)
 
 -   `sendToServiceWorker(msg)` - Send message
 -   `connectSidePanel()` - Establish port
@@ -247,6 +254,16 @@ npm run dev
 -   Click extension icon or toolbar button
 -   Check if extension is enabled
 
+## Documentation
+
+For more detailed information, see the docs folder:
+
+-   **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System design and data flow
+-   **[DEVELOPMENT.md](docs/DEVELOPMENT.md)** - Development guidelines
+-   **[N8N_INTEGRATION.md](docs/N8N_INTEGRATION.md)** - n8n webhook setup guide
+-   **[QUICKSTART_ZH.md](docs/QUICKSTART_ZH.md)** - 快速開始指南（中文）
+-   **[INSTALL_CHROME.md](docs/INSTALL_CHROME.md)** - Chrome 安裝詳細步驟
+
 ## Future Enhancements
 
 -   [ ] Real-time transcription API support
@@ -255,8 +272,6 @@ npm run dev
 -   [ ] Collaboration features
 -   [ ] Advanced filtering and search
 -   [ ] Custom note templates
-
-## License
 
 MIT
 

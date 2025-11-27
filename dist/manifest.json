@@ -1,23 +1,23 @@
 {
-  "manifest_version": 3,
-  "name": "Google Meet Interview Assistant",
-  "version": "1.0.0",
-  "description": "AI-powered assistant for interview recordings and note-taking on Google Meet",
-  "permissions": ["storage", "sidePanel", "activeTab", "scripting"],
-  "host_permissions": ["https://meet.google.com/*"],
-  "background": {
-    "service_worker": "service-worker.js"
-  },
-  "content_scripts": [
-    {
-      "matches": ["https://meet.google.com/*"],
-      "js": ["content-script.js"]
+    "manifest_version": 3,
+    "name": "Google Meet Interview Assistant",
+    "version": "1.0.0",
+    "description": "AI-powered assistant for interview recordings and note-taking on Google Meet",
+    "permissions": ["storage", "sidePanel", "activeTab", "scripting"],
+    "host_permissions": ["https://meet.google.com/*"],
+    "background": {
+        "service_worker": "service-worker.js"
+    },
+    "content_scripts": [
+        {
+            "matches": ["https://meet.google.com/*"],
+            "js": ["content-script.js"]
+        }
+    ],
+    "side_panel": {
+        "default_path": "sidepanel.html"
+    },
+    "action": {
+        "default_title": "Open Interview Assistant"
     }
-  ],
-  "side_panel": {
-    "default_path": "sidepanel.html"
-  },
-  "action": {
-    "default_title": "Open Interview Assistant"
-  }
 }

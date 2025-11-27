@@ -531,11 +531,11 @@ function getCurrentMeetingId() {
  */
 function initializeDarkMode() {
     console.log(`${PREFIX} Initializing dark mode...`);
-    
+
     chrome.storage.local.get(["darkModePreference"], (result) => {
         const isDarkMode = result.darkModePreference || false;
         console.log(`${PREFIX} Dark mode preference: ${isDarkMode}`);
-        
+
         if (isDarkMode) {
             document.documentElement.classList.add("dark-mode");
             updateDarkModeButton(true);
@@ -548,14 +548,14 @@ function initializeDarkMode() {
  */
 function toggleDarkMode() {
     console.log(`${PREFIX} Toggling dark mode...`);
-    
+
     const isDarkMode = document.documentElement.classList.toggle("dark-mode");
-    
+
     // Save preference to storage
     chrome.storage.local.set({ darkModePreference: isDarkMode }, () => {
         console.log(`${PREFIX} Dark mode preference saved: ${isDarkMode}`);
     });
-    
+
     updateDarkModeButton(isDarkMode);
 }
 
@@ -565,10 +565,10 @@ function toggleDarkMode() {
 function updateDarkModeButton(isDarkMode) {
     const darkModeBtn = document.getElementById("darkModeBtn");
     if (!darkModeBtn) return;
-    
+
     const sunIcon = darkModeBtn.querySelector(".sun-icon");
     const moonIcon = darkModeBtn.querySelector(".moon-icon");
-    
+
     if (isDarkMode) {
         sunIcon.style.display = "none";
         moonIcon.style.display = "block";
