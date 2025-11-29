@@ -1,217 +1,202 @@
 /**
  * Content Script - Google Meet Transcript Capture
- * Monitors Google Meet for speakers and captions
+ * Uses Web Speech API to transcribe audio in real-time
  */
 
 console.log("[ContentScript] Google Meet Interview Assistant loaded");
 
-// ===== Transcript Tracking =====
+// ===== Web Speech API Setup =====
+const SpeechRecognition =
+    window.SpeechRecognition || window.webkitSpeechRecognition;
+
+if (!SpeechRecognition) {
+    console.error(
+        "[ContentScript] Web Speech API not supported in this browser"
+    );
+}
+
+let recognition = null;
+let isListening = false;
 let currentTranscript = {
-    speaker: "",
+    speaker: "Participant",
     text: "",
     timestamp: new Date().toISOString(),
 };
 
-let transcriptObserver = null;
+let lastTranscriptTime = 0;
+const TRANSCRIPT_DEBOUNCE = 500; // ms
 
 /**
- * Detect speaker name from the page
- * @returns {string|null}
+ * Initialize Web Speech API for real-time transcription
  */
-function detectSpeaker() {
-    const PREFIX = "[ContentScript-DetectSpeaker]";
-    console.log(`${PREFIX} Attempting to detect speaker...`);
+function initializeSpeechRecognition() {
+    const PREFIX = "[ContentScript-SpeechAPI]";
 
-    // Try multiple selectors for speaker detection
-    const possibleSelectors = [
-        "[data-speaker-name]",
-        '[aria-label*="speaking"]',
-        ".speaker-name",
-        '[role="log"] [aria-label]',
-        "[data-is-caption] [aria-label]",
-        ".gXE8Rb", // Google Meet speaker label class (may change)
-    ];
-
-    for (let selector of possibleSelectors) {
-        try {
-            const elements = document.querySelectorAll(selector);
-            for (let el of elements) {
-                if (el.textContent && el.textContent.trim().length > 0) {
-                    const name = el.textContent.trim();
-                    console.log(`${PREFIX} Speaker detected: ${name}`);
-                    return name;
-                }
-            }
-        } catch (error) {
-            console.log(`${PREFIX} Selector error (${selector}):`, error);
-        }
+    if (!SpeechRecognition) {
+        console.error(`${PREFIX} Speech Recognition API not available`);
+        return;
     }
 
-    console.log(`${PREFIX} No speaker detected`);
-    return null;
+    recognition = new SpeechRecognition();
+
+    // Configuration
+    recognition.continuous = true; // Keep recognizing
+    recognition.interimResults = true; // Get interim results
+    recognition.language = "en-US"; // Can be changed dynamically
+
+    // Start result handler
+    recognition.onstart = () => {
+        console.log(`${PREFIX} Speech recognition started`);
+        isListening = true;
+    };
+
+    // Result handler
+    recognition.onresult = (event) => {
+        let interimTranscript = "";
+        let finalTranscript = "";
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+
+            if (event.results[i].isFinal) {
+                finalTranscript += transcript + " ";
+            } else {
+                interimTranscript += transcript;
+            }
+        }
+
+        // Update current transcript
+        if (finalTranscript.length > 0) {
+            currentTranscript.text = finalTranscript.trim();
+            currentTranscript.timestamp = new Date().toISOString();
+
+            console.log(`${PREFIX} Final: "${finalTranscript.trim()}"`);
+
+            // Send to service worker
+            const now = Date.now();
+            if (now - lastTranscriptTime > TRANSCRIPT_DEBOUNCE) {
+                sendTranscriptUpdate(currentTranscript);
+                lastTranscriptTime = now;
+            }
+        }
+
+        if (interimTranscript.length > 0) {
+            console.log(`${PREFIX} Interim: "${interimTranscript}"`);
+        }
+    };
+
+    // Error handler
+    recognition.onerror = (event) => {
+        console.error(`${PREFIX} Error:`, event.error);
+
+        // Auto-restart on certain errors
+        if (event.error === "no-speech") {
+            console.log(`${PREFIX} No speech detected, restarting...`);
+            setTimeout(() => startListening(), 1000);
+        }
+    };
+
+    // End handler
+    recognition.onend = () => {
+        console.log(`${PREFIX} Speech recognition ended`);
+        isListening = false;
+
+        // Auto-restart if monitoring is active
+        if (window.monitoringActive) {
+            setTimeout(() => startListening(), 1000);
+        }
+    };
 }
 
 /**
- * Detect caption/transcript text from the page
- * @returns {string|null}
+ * Send transcript update to service worker
  */
-function detectCaption() {
-    const PREFIX = "[ContentScript-DetectCaption]";
-    console.log(`${PREFIX} Attempting to detect caption...`);
+function sendTranscriptUpdate(transcript) {
+    const PREFIX = "[ContentScript-Send]";
 
-    // Try multiple selectors for caption detection
-    const possibleSelectors = [
-        "[data-is-caption]",
-        '[aria-label*="caption"]',
-        ".caption-text",
-        '[role="log"]',
-        ".gwEWpd", // Google Meet caption class (may change)
-    ];
-
-    for (let selector of possibleSelectors) {
-        try {
-            const elements = document.querySelectorAll(selector);
-            for (let el of elements) {
-                const text = el.textContent?.trim();
-                if (text && text.length > 0) {
-                    console.log(`${PREFIX} Caption detected: ${text}`);
-                    return text;
-                }
+    chrome.runtime.sendMessage(
+        {
+            type: "TRANSCRIPT_UPDATE",
+            data: transcript,
+        },
+        (response) => {
+            if (chrome.runtime.lastError) {
+                console.error(`${PREFIX} Error:`, chrome.runtime.lastError);
+            } else {
+                console.log(`${PREFIX} Service worker acknowledged`);
             }
-        } catch (error) {
-            console.log(`${PREFIX} Selector error (${selector}):`, error);
         }
-    }
-
-    console.log(`${PREFIX} No caption detected`);
-    return null;
+    );
 }
 
 /**
- * Initialize MutationObserver to monitor for changes
+ * Start listening with Web Speech API
+ */
+function startListening() {
+    const PREFIX = "[ContentScript-Listen]";
+
+    if (!recognition) {
+        console.error(`${PREFIX} Speech recognition not initialized`);
+        return;
+    }
+
+    if (isListening) {
+        console.log(`${PREFIX} Already listening`);
+        return;
+    }
+
+    try {
+        recognition.start();
+        console.log(`${PREFIX} Started listening`);
+    } catch (error) {
+        console.error(`${PREFIX} Error starting:`, error);
+    }
+}
+
+/**
+ * Stop listening with Web Speech API
+ */
+function stopListening() {
+    const PREFIX = "[ContentScript-Listen]";
+
+    if (!recognition) {
+        console.error(`${PREFIX} Speech recognition not initialized`);
+        return;
+    }
+
+    try {
+        recognition.stop();
+        console.log(`${PREFIX} Stopped listening`);
+    } catch (error) {
+        console.error(`${PREFIX} Error stopping:`, error);
+    }
+}
+
+/**
+ * Initialize monitoring (starts speech recognition)
  */
 function initializeTranscriptMonitoring() {
     const PREFIX = "[ContentScript-Monitor]";
-    console.log(`${PREFIX} Initializing transcript monitoring...`);
+    console.log(`${PREFIX} Initializing monitoring...`);
 
-    const config = {
-        childList: true,
-        subtree: true,
-        characterData: true,
-        attributes: true,
-        attributeFilter: ["aria-label", "data-is-caption"],
-        debounce: 100,
-    };
+    initializeSpeechRecognition();
+    window.monitoringActive = true;
+    startListening();
 
-    transcriptObserver = new MutationObserver((mutations) => {
-        console.log(`${PREFIX} Mutation detected. Count:`, mutations.length);
-
-        // Debounce rapid mutations
-        clearTimeout(transcriptObserver.debounceTimer);
-        transcriptObserver.debounceTimer = setTimeout(() => {
-            const speaker = detectSpeaker();
-            const caption = detectCaption();
-
-            if (speaker && caption) {
-                const newTranscript = {
-                    speaker: speaker,
-                    text: caption,
-                    timestamp: new Date().toISOString(),
-                };
-
-                // Only send if content changed
-                if (
-                    newTranscript.speaker !== currentTranscript.speaker ||
-                    newTranscript.text !== currentTranscript.text
-                ) {
-                    console.log(
-                        `${PREFIX} New transcript detected:`,
-                        newTranscript
-                    );
-                    currentTranscript = newTranscript;
-
-                    // Send to service worker
-                    chrome.runtime.sendMessage(
-                        {
-                            type: "TRANSCRIPT_UPDATE",
-                            data: newTranscript,
-                        },
-                        (response) => {
-                            if (chrome.runtime.lastError) {
-                                console.error(
-                                    `${PREFIX} Message send error:`,
-                                    chrome.runtime.lastError
-                                );
-                            } else {
-                                console.log(
-                                    `${PREFIX} Service worker acknowledged:`,
-                                    response
-                                );
-                            }
-                        }
-                    );
-                }
-            }
-        }, 300);
-    });
-
-    try {
-        transcriptObserver.observe(document.body, config);
-        console.log(`${PREFIX} Monitoring started on document.body`);
-    } catch (error) {
-        console.error(`${PREFIX} Failed to initialize observer:`, error);
-    }
+    console.log(`${PREFIX} Monitoring initialized and listening started`);
 }
 
 /**
- * Stop monitoring
+ * Stop monitoring (stops speech recognition)
  */
 function stopTranscriptMonitoring() {
     const PREFIX = "[ContentScript-Monitor]";
-    console.log(`${PREFIX} Stopping transcript monitoring...`);
+    console.log(`${PREFIX} Stopping monitoring...`);
 
-    if (transcriptObserver) {
-        transcriptObserver.disconnect();
-        console.log(`${PREFIX} Monitoring stopped`);
-    }
-}
+    window.monitoringActive = false;
+    stopListening();
 
-/**
- * Inject status indicator into page (optional visual feedback)
- */
-function injectStatusIndicator() {
-    const PREFIX = "[ContentScript-Indicator]";
-    console.log(`${PREFIX} Injecting status indicator...`);
-
-    try {
-        // Check if already injected
-        if (document.getElementById("gm-assistant-status")) {
-            console.log(`${PREFIX} Status indicator already exists`);
-            return;
-        }
-
-        const indicator = document.createElement("div");
-        indicator.id = "gm-assistant-status";
-        indicator.style.cssText = `
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      padding: 8px 12px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      border-radius: 20px;
-      font-size: 12px;
-      z-index: 10000;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-      font-family: system-ui, -apple-system, sans-serif;
-    `;
-        indicator.textContent = "🎤 Assistant Ready";
-
-        document.body.appendChild(indicator);
-        console.log(`${PREFIX} Status indicator injected`);
-    } catch (error) {
-        console.error(`${PREFIX} Failed to inject indicator:`, error);
-    }
+    console.log(`${PREFIX} Monitoring stopped`);
 }
 
 /**
@@ -225,7 +210,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         switch (request.type) {
             case "GET_CURRENT_TRANSCRIPT":
                 console.log(
-                    `${PREFIX} Returning current transcript:`,
+                    `${PREFIX} Returning transcript:`,
                     currentTranscript
                 );
                 sendResponse({ success: true, data: currentTranscript });
@@ -243,19 +228,31 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 sendResponse({ success: true, message: "Monitoring stopped" });
                 break;
 
+            case "SET_LANGUAGE":
+                console.log(`${PREFIX} Setting language to:`, request.language);
+                if (recognition) {
+                    recognition.language = request.language || "en-US";
+                    sendResponse({ success: true, message: "Language set" });
+                } else {
+                    sendResponse({
+                        success: false,
+                        error: "Recognition not initialized",
+                    });
+                }
+                break;
+
             default:
                 console.log(`${PREFIX} Unknown message type: ${request.type}`);
                 sendResponse({ success: false, error: "Unknown message type" });
         }
     } catch (error) {
-        console.error(`${PREFIX} Error handling message:`, error);
+        console.error(`${PREFIX} Error:`, error);
         sendResponse({ success: false, error: error.message });
     }
 });
 
 // ===== Initialize =====
 console.log("[ContentScript] Initialization started");
-injectStatusIndicator();
 initializeTranscriptMonitoring();
 console.log("[ContentScript] Initialization complete");
 

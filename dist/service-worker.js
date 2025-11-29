@@ -180,25 +180,43 @@ async function handleSubmitTranscript(transcriptData, sender, sendResponse) {
         console.log(
             `${PREFIX} [handleSubmitTranscript] Webhook URL found, sending...`
         );
+        console.log(`${PREFIX} [handleSubmitTranscript] URL: ${n8nWebhookUrl}`);
 
-        // Send to n8n
-        const response = await fetch(n8nWebhookUrl, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                meetingId: transcriptData.meetingId || "unknown",
-                timestamp: transcriptData.timestamp || new Date().toISOString(),
-                speaker: transcriptData.speaker,
-                transcript: transcriptData.text,
-                metadata: {
-                    extensionId: chrome.runtime.id,
-                    capturedAt: new Date().toISOString(),
-                    type: "TRANSCRIPT_SUBMISSION",
+        // Send to n8n with improved error handling
+        let response;
+        try {
+            response = await fetch(n8nWebhookUrl, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
                 },
-            }),
-        });
+                body: JSON.stringify({
+                    meetingId: transcriptData.meetingId || "unknown",
+                    timestamp:
+                        transcriptData.timestamp || new Date().toISOString(),
+                    speaker: transcriptData.speaker,
+                    transcript: transcriptData.text,
+                    metadata: {
+                        extensionId: chrome.runtime.id,
+                        capturedAt: new Date().toISOString(),
+                        type: "TRANSCRIPT_SUBMISSION",
+                    },
+                }),
+            });
+        } catch (fetchError) {
+            console.error(
+                `${PREFIX} [handleSubmitTranscript] Fetch error:`,
+                fetchError
+            );
+
+            // 提供更详细的错误信息
+            if (fetchError.message.includes("Failed to fetch")) {
+                throw new Error(
+                    `Network error: Cannot reach webhook URL. Check if the URL is correct and accessible. Error: ${fetchError.message}`
+                );
+            }
+            throw fetchError;
+        }
 
         console.log(
             `${PREFIX} [handleSubmitTranscript] Response status: ${response.status}`

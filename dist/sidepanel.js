@@ -150,14 +150,15 @@ function clearTranscript() {
     console.log(`${PREFIX} [clearTranscript] Clearing transcript...`);
 
     elements.transcriptContent.innerHTML =
-        '<p class="placeholder">Waiting for Google Meet to start...</p>';
+        '<p class="placeholder">No transcripts yet...</p>';
     state.transcriptItems = [];
     state.currentTranscript = null;
 
-    elements.transcriptStatus.textContent = "Idle";
-    elements.transcriptStatus.classList.remove("recording", "submitted");
+    // 不重置状态 - 保持 recording，因为会议仍在进行
+    elements.transcriptStatus.classList.remove("submitted");
 
-    console.log(`${PREFIX} Transcript cleared`);
+    // 如果清空后有新数据进来，状态会自动更新
+    console.log(`${PREFIX} Transcript cleared (status preserved)`);
 }
 
 /**
@@ -213,7 +214,10 @@ async function submitTranscript() {
                 });
             }
 
-            // Clear transcript after short delay
+            // 显示成功通知
+            showNotification("✓ Transcript submitted successfully!", "success");
+
+            // 清空字幕
             setTimeout(() => {
                 clearTranscript();
             }, 1500);
@@ -225,7 +229,19 @@ async function submitTranscript() {
         elements.syncIndicator.textContent = "✕";
         elements.syncIndicator.classList.remove("syncing");
         elements.syncIndicator.classList.add("error");
-        showNotification(`Submission failed: ${error.message}`, "error");
+
+        // 提供更详细的错误诊断
+        let errorMsg = error.message;
+        if (error.message.includes("Network error")) {
+            errorMsg = `❌ Network Error: Check your webhook URL. ${error.message}`;
+        } else if (error.message.includes("Webhook URL not configured")) {
+            errorMsg = "❌ Please configure your n8n webhook URL first";
+        } else if (error.message.includes("Failed to fetch")) {
+            errorMsg =
+                "❌ Cannot reach webhook server. Check URL and connection.";
+        }
+
+        showNotification(errorMsg, "error");
     } finally {
         elements.submitBtn.disabled = false;
         elements.submitBtn.textContent = "Submit Q&A";
