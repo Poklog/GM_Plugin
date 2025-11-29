@@ -17,6 +17,8 @@ if (!SpeechRecognition) {
 
 let recognition = null;
 let isListening = false;
+let isStarting = false; // 防止重複啟動
+let extensionContextValid = true; // 追蹤 extension 上下文狀態
 let currentTranscript = {
     speaker: "Participant",
     text: "",
@@ -25,6 +27,20 @@ let currentTranscript = {
 
 let lastTranscriptTime = 0;
 const TRANSCRIPT_DEBOUNCE = 500; // ms
+let restartTimeout = null; // 用於追蹤重啟計時器
+
+/**
+ * 檢查 extension 上下文是否仍然有效
+ */
+function isExtensionContextValid() {
+    try {
+        // 訪問任何 chrome API 來檢查是否有效
+        return !!chrome.runtime?.id;
+    } catch (error) {
+        console.error("[ContentScript] Extension context check failed:", error);
+        return false;
+    }
+}
 
 /**
  * Initialize Web Speech API for real-time transcription
@@ -48,51 +64,83 @@ function initializeSpeechRecognition() {
     recognition.onstart = () => {
         console.log(`${PREFIX} Speech recognition started`);
         isListening = true;
+        isStarting = false; // 清除啟動標記
     };
 
     // Result handler
     recognition.onresult = (event) => {
-        let interimTranscript = "";
-        let finalTranscript = "";
+        try {
+            let interimTranscript = "";
+            let finalTranscript = "";
 
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-            const transcript = event.results[i][0].transcript;
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                const transcript = event.results[i][0].transcript;
 
-            if (event.results[i].isFinal) {
-                finalTranscript += transcript + " ";
-            } else {
-                interimTranscript += transcript;
+                if (event.results[i].isFinal) {
+                    finalTranscript += transcript + " ";
+                } else {
+                    interimTranscript += transcript;
+                }
             }
-        }
 
-        // Update current transcript
-        if (finalTranscript.length > 0) {
-            currentTranscript.text = finalTranscript.trim();
-            currentTranscript.timestamp = new Date().toISOString();
+            // Update current transcript
+            if (finalTranscript.length > 0) {
+                currentTranscript.text = finalTranscript.trim();
+                currentTranscript.timestamp = new Date().toISOString();
 
-            console.log(`${PREFIX} Final: "${finalTranscript.trim()}"`);
+                console.log(`${PREFIX} Final: "${finalTranscript.trim()}"`);
 
-            // Send to service worker
-            const now = Date.now();
-            if (now - lastTranscriptTime > TRANSCRIPT_DEBOUNCE) {
-                sendTranscriptUpdate(currentTranscript);
-                lastTranscriptTime = now;
+                // 檢查上下文，然後發送
+                if (isExtensionContextValid()) {
+                    const now = Date.now();
+                    if (now - lastTranscriptTime > TRANSCRIPT_DEBOUNCE) {
+                        sendTranscriptUpdate(currentTranscript);
+                        lastTranscriptTime = now;
+                    }
+                } else {
+                    console.warn(
+                        `${PREFIX} Extension context invalid, not sending`
+                    );
+                    extensionContextValid = false;
+                    window.monitoringActive = false;
+                }
             }
-        }
 
-        if (interimTranscript.length > 0) {
-            console.log(`${PREFIX} Interim: "${interimTranscript}"`);
+            if (interimTranscript.length > 0) {
+                console.log(`${PREFIX} Interim: "${interimTranscript}"`);
+            }
+        } catch (error) {
+            console.error(`${PREFIX} Error processing result:`, error);
         }
     };
 
     // Error handler
     recognition.onerror = (event) => {
-        console.error(`${PREFIX} Error:`, event.error);
+        console.error(`${PREFIX} Error: ${event.error}`);
+        isListening = false;
 
-        // Auto-restart on certain errors
-        if (event.error === "no-speech") {
-            console.log(`${PREFIX} No speech detected, restarting...`);
-            setTimeout(() => startListening(), 1000);
+        // 某些錯誤需要重啟
+        if (event.error === "no-speech" || event.error === "audio-capture") {
+            console.log(
+                `${PREFIX} Attempting to recover from "${event.error}"...`
+            );
+
+            // 清除舊的計時器
+            if (restartTimeout) {
+                clearTimeout(restartTimeout);
+            }
+
+            // 標記為未聽狀態，準備重啟
+            isListening = false;
+            isStarting = false;
+
+            // 1.5 秒後重試
+            if (window.monitoringActive) {
+                restartTimeout = setTimeout(() => {
+                    console.log(`${PREFIX} Restarting after error...`);
+                    startListening();
+                }, 1500);
+            }
         }
     };
 
@@ -100,10 +148,43 @@ function initializeSpeechRecognition() {
     recognition.onend = () => {
         console.log(`${PREFIX} Speech recognition ended`);
         isListening = false;
+        isStarting = false; // 確保清除啟動標記
 
-        // Auto-restart if monitoring is active
+        // 檢查上下文是否仍然有效
+        if (!isExtensionContextValid()) {
+            console.warn(
+                `${PREFIX} Extension context lost during onend, stopping monitoring`
+            );
+            extensionContextValid = false;
+            window.monitoringActive = false;
+            return;
+        }
+
+        // 監控處於活動狀態時自動重啟（但避免衝突）
         if (window.monitoringActive) {
-            setTimeout(() => startListening(), 1000);
+            // 清除舊的計時器
+            if (restartTimeout) {
+                clearTimeout(restartTimeout);
+            }
+
+            console.log(`${PREFIX} Auto-restarting in 1.5 seconds...`);
+            restartTimeout = setTimeout(() => {
+                if (
+                    window.monitoringActive &&
+                    !isListening &&
+                    !isStarting &&
+                    isExtensionContextValid()
+                ) {
+                    console.log(`${PREFIX} Restarting listening...`);
+                    startListening();
+                } else {
+                    console.log(
+                        `${PREFIX} Restart cancelled (monitoring=${
+                            window.monitoringActive
+                        }, listening=${isListening}, starting=${isStarting}, contextValid=${isExtensionContextValid()})`
+                    );
+                }
+            }, 1500); // 增加延遲到 1.5 秒
         }
     };
 }
@@ -114,19 +195,52 @@ function initializeSpeechRecognition() {
 function sendTranscriptUpdate(transcript) {
     const PREFIX = "[ContentScript-Send]";
 
-    chrome.runtime.sendMessage(
-        {
-            type: "TRANSCRIPT_UPDATE",
-            data: transcript,
-        },
-        (response) => {
-            if (chrome.runtime.lastError) {
-                console.error(`${PREFIX} Error:`, chrome.runtime.lastError);
-            } else {
-                console.log(`${PREFIX} Service worker acknowledged`);
+    // 首先檢查上下文是否有效
+    if (!isExtensionContextValid()) {
+        console.error(`${PREFIX} Extension context not valid, aborting send`);
+        extensionContextValid = false;
+        window.monitoringActive = false;
+        return;
+    }
+
+    try {
+        chrome.runtime.sendMessage(
+            {
+                type: "TRANSCRIPT_UPDATE",
+                data: transcript,
+            },
+            (response) => {
+                // 檢查是否有錯誤
+                if (chrome.runtime.lastError) {
+                    const error = chrome.runtime.lastError;
+                    console.warn(`${PREFIX} Error:`, error);
+
+                    // 檢測上下文失效
+                    if (
+                        error.message &&
+                        error.message.includes("context invalidated")
+                    ) {
+                        console.error(
+                            `${PREFIX} Context invalidated detected!`
+                        );
+                        extensionContextValid = false;
+                        window.monitoringActive = false;
+                    }
+                } else {
+                    console.log(`${PREFIX} OK`);
+                }
             }
+        );
+    } catch (error) {
+        console.error(`${PREFIX} Exception:`, error);
+
+        // 檢測上下文失效異常
+        if (error.message && error.message.includes("context invalidated")) {
+            console.error(`${PREFIX} Context invalidated in catch!`);
+            extensionContextValid = false;
+            window.monitoringActive = false;
         }
-    );
+    }
 }
 
 /**
@@ -135,21 +249,52 @@ function sendTranscriptUpdate(transcript) {
 function startListening() {
     const PREFIX = "[ContentScript-Listen]";
 
+    // 檢查上下文
+    if (!isExtensionContextValid()) {
+        console.error(`${PREFIX} Extension context not valid, cannot start`);
+        extensionContextValid = false;
+        window.monitoringActive = false;
+        return;
+    }
+
     if (!recognition) {
         console.error(`${PREFIX} Speech recognition not initialized`);
         return;
     }
 
+    // 如果已經在聽，就不要重複啟動
     if (isListening) {
         console.log(`${PREFIX} Already listening`);
         return;
     }
 
+    // 如果正在啟動，等待
+    if (isStarting) {
+        console.log(`${PREFIX} Already starting...`);
+        return;
+    }
+
+    // 清除任何待處理的重啟計時器
+    if (restartTimeout) {
+        clearTimeout(restartTimeout);
+        restartTimeout = null;
+    }
+
     try {
+        isStarting = true;
+        console.log(`${PREFIX} Calling recognition.start()`);
         recognition.start();
-        console.log(`${PREFIX} Started listening`);
+        // 注意: isStarting 會由 onstart 事件清除
     } catch (error) {
-        console.error(`${PREFIX} Error starting:`, error);
+        console.error(`${PREFIX} Error calling start():`, error);
+        isStarting = false;
+
+        // 如果已經在運行，就不要重試
+        if (error.message && error.message.includes("already started")) {
+            console.log(`${PREFIX} Recognition already running`);
+            isListening = true;
+            isStarting = false;
+        }
     }
 }
 
@@ -164,9 +309,17 @@ function stopListening() {
         return;
     }
 
+    // 清除任何待處理的重啟計時器
+    if (restartTimeout) {
+        clearTimeout(restartTimeout);
+        restartTimeout = null;
+    }
+
     try {
+        isStarting = false;
+        console.log(`${PREFIX} Stopping...`);
         recognition.stop();
-        console.log(`${PREFIX} Stopped listening`);
+        console.log(`${PREFIX} Stop command sent`);
     } catch (error) {
         console.error(`${PREFIX} Error stopping:`, error);
     }
@@ -194,6 +347,13 @@ function stopTranscriptMonitoring() {
     console.log(`${PREFIX} Stopping monitoring...`);
 
     window.monitoringActive = false;
+
+    // 清除計時器
+    if (restartTimeout) {
+        clearTimeout(restartTimeout);
+        restartTimeout = null;
+    }
+
     stopListening();
 
     console.log(`${PREFIX} Monitoring stopped`);
@@ -213,41 +373,84 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     `${PREFIX} Returning transcript:`,
                     currentTranscript
                 );
-                sendResponse({ success: true, data: currentTranscript });
+                try {
+                    sendResponse({ success: true, data: currentTranscript });
+                } catch (error) {
+                    console.warn(`${PREFIX} sendResponse failed:`, error);
+                }
                 break;
 
             case "START_MONITORING":
                 console.log(`${PREFIX} Starting monitoring...`);
                 initializeTranscriptMonitoring();
-                sendResponse({ success: true, message: "Monitoring started" });
+                try {
+                    sendResponse({
+                        success: true,
+                        message: "Monitoring started",
+                    });
+                } catch (error) {
+                    console.warn(`${PREFIX} sendResponse failed:`, error);
+                }
                 break;
 
             case "STOP_MONITORING":
                 console.log(`${PREFIX} Stopping monitoring...`);
                 stopTranscriptMonitoring();
-                sendResponse({ success: true, message: "Monitoring stopped" });
+                try {
+                    sendResponse({
+                        success: true,
+                        message: "Monitoring stopped",
+                    });
+                } catch (error) {
+                    console.warn(`${PREFIX} sendResponse failed:`, error);
+                }
                 break;
 
             case "SET_LANGUAGE":
                 console.log(`${PREFIX} Setting language to:`, request.language);
                 if (recognition) {
                     recognition.language = request.language || "en-US";
-                    sendResponse({ success: true, message: "Language set" });
+                    try {
+                        sendResponse({
+                            success: true,
+                            message: "Language set",
+                        });
+                    } catch (error) {
+                        console.warn(`${PREFIX} sendResponse failed:`, error);
+                    }
                 } else {
-                    sendResponse({
-                        success: false,
-                        error: "Recognition not initialized",
-                    });
+                    try {
+                        sendResponse({
+                            success: false,
+                            error: "Recognition not initialized",
+                        });
+                    } catch (error) {
+                        console.warn(`${PREFIX} sendResponse failed:`, error);
+                    }
                 }
                 break;
 
             default:
                 console.log(`${PREFIX} Unknown message type: ${request.type}`);
-                sendResponse({ success: false, error: "Unknown message type" });
+                try {
+                    sendResponse({
+                        success: false,
+                        error: "Unknown message type",
+                    });
+                } catch (error) {
+                    console.warn(`${PREFIX} sendResponse failed:`, error);
+                }
         }
     } catch (error) {
         console.error(`${PREFIX} Error:`, error);
-        sendResponse({ success: false, error: error.message });
+        try {
+            sendResponse({ success: false, error: error.message });
+        } catch (responseError) {
+            console.warn(
+                `${PREFIX} Could not send error response:`,
+                responseError
+            );
+        }
     }
 });
 
