@@ -14,15 +14,15 @@ const elements = {
     submitBtn: document.getElementById("submitBtn"),
     clearBtn: document.getElementById("clearBtn"),
     settingsBtn: document.getElementById("settingsBtn"),
+    darkModeBtn: document.getElementById("darkModeBtn"),
     transcriptStatus: document.getElementById("transcriptStatus"),
     syncIndicator: document.getElementById("syncIndicator"),
-    // Modal elements
-    settingsModal: document.getElementById("settingsModal"),
-    modalOverlay: document.getElementById("modalOverlay"),
+    // Webhook panel elements
+    webhookPanel: document.getElementById("webhookPanel"),
     webhookInput: document.getElementById("webhookInput"),
-    closeModalBtn: document.getElementById("closeModalBtn"),
+    closeWebhookBtn: document.getElementById("closeWebhookBtn"),
     saveWebhookBtn: document.getElementById("saveWebhookBtn"),
-    cancelBtn: document.getElementById("cancelBtn"),
+    cancelWebhookBtn: document.getElementById("cancelWebhookBtn"),
 };
 
 // ===== State Management =====
@@ -332,31 +332,29 @@ function updateNotesUI(data) {
 // ===== Webhook Configuration =====
 
 /**
- * Open webhook configuration modal
+ * Open webhook configuration panel
  */
-function openWebhookModal() {
-    console.log(`${PREFIX} [openWebhookModal] Opening modal...`);
+function openWebhookPanel() {
+    console.log(`${PREFIX} [openWebhookPanel] Opening panel...`);
 
-    elements.settingsModal.classList.add("active");
-    elements.modalOverlay.classList.add("active");
+    elements.webhookPanel.style.display = "block";
 
     // Load existing webhook URL
     loadWebhookUrl();
 
-    console.log(`${PREFIX} Modal opened`);
+    console.log(`${PREFIX} Panel opened`);
 }
 
 /**
- * Close webhook configuration modal
+ * Close webhook configuration panel
  */
-function closeWebhookModal() {
-    console.log(`${PREFIX} [closeWebhookModal] Closing modal...`);
+function closeWebhookPanel() {
+    console.log(`${PREFIX} [closeWebhookPanel] Closing panel...`);
 
-    elements.settingsModal.classList.remove("active");
-    elements.modalOverlay.classList.remove("active");
+    elements.webhookPanel.style.display = "none";
     elements.webhookInput.value = "";
 
-    console.log(`${PREFIX} Modal closed`);
+    console.log(`${PREFIX} Panel closed`);
 }
 
 /**
@@ -598,24 +596,15 @@ function updateDarkModeButton(isDarkMode) {
 
 elements.submitBtn.addEventListener("click", submitTranscript);
 elements.clearBtn.addEventListener("click", clearTranscript);
-elements.settingsBtn.addEventListener("click", openWebhookModal);
-elements.closeModalBtn.addEventListener("click", closeWebhookModal);
-elements.cancelBtn.addEventListener("click", closeWebhookModal);
+elements.settingsBtn.addEventListener("click", openWebhookPanel);
+elements.closeWebhookBtn.addEventListener("click", closeWebhookPanel);
+elements.cancelWebhookBtn.addEventListener("click", closeWebhookPanel);
 elements.saveWebhookBtn.addEventListener("click", saveWebhookUrl);
 
 // Dark mode toggle
-const darkModeBtn = document.getElementById("darkModeBtn");
-if (darkModeBtn) {
-    darkModeBtn.addEventListener("click", toggleDarkMode);
+if (elements.darkModeBtn) {
+    elements.darkModeBtn.addEventListener("click", toggleDarkMode);
 }
-
-// Close modal when clicking overlay
-elements.modalOverlay.addEventListener("click", closeWebhookModal);
-
-// Prevent modal close when clicking inside modal
-elements.settingsModal.addEventListener("click", (e) => {
-    e.stopPropagation();
-});
 
 // Enter key to save webhook
 elements.webhookInput.addEventListener("keypress", (e) => {

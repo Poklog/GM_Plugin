@@ -3,13 +3,7 @@
     "name": "Google Meet Interview Assistant",
     "version": "1.0.0",
     "description": "AI-powered assistant for interview recordings and note-taking on Google Meet",
-    "permissions": [
-        "storage",
-        "sidePanel",
-        "activeTab",
-        "scripting",
-        "microphone"
-    ],
+    "permissions": ["storage", "sidePanel", "activeTab", "scripting"],
     "host_permissions": ["https://meet.google.com/*"],
     "background": {
         "service_worker": "service-worker.js"
