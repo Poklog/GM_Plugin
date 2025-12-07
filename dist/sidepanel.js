@@ -150,7 +150,7 @@ function clearTranscript() {
     console.log(`${PREFIX} [clearTranscript] Clearing transcript...`);
 
     elements.transcriptContent.innerHTML =
-        '<p class="placeholder">No transcripts yet...</p>';
+        '<p class="placeholder">尚無逐字稿...</p>';
     state.transcriptItems = [];
     state.currentTranscript = null;
 
@@ -551,7 +551,7 @@ function initializeDarkMode() {
         console.log(`${PREFIX} Dark mode preference: ${isDarkMode}`);
 
         if (isDarkMode) {
-            document.documentElement.classList.add("dark-mode");
+            document.body.classList.add("dark-mode");
             updateDarkModeButton(true);
         }
     });
@@ -563,7 +563,7 @@ function initializeDarkMode() {
 function toggleDarkMode() {
     console.log(`${PREFIX} Toggling dark mode...`);
 
-    const isDarkMode = document.documentElement.classList.toggle("dark-mode");
+    const isDarkMode = document.body.classList.toggle("dark-mode");
 
     // Save preference to storage
     chrome.storage.local.set({ darkModePreference: isDarkMode }, () => {
@@ -580,15 +580,15 @@ function updateDarkModeButton(isDarkMode) {
     const darkModeBtn = document.getElementById("darkModeBtn");
     if (!darkModeBtn) return;
 
-    const sunIcon = darkModeBtn.querySelector(".sun-icon");
-    const moonIcon = darkModeBtn.querySelector(".moon-icon");
+    const sunIcon = darkModeBtn.querySelector("img.sun-icon");
+    const moonIcon = darkModeBtn.querySelector("img.moon-icon");
 
     if (isDarkMode) {
-        sunIcon.style.display = "none";
-        moonIcon.style.display = "block";
+        if (sunIcon) sunIcon.style.display = "none";
+        if (moonIcon) moonIcon.style.display = "block";
     } else {
-        sunIcon.style.display = "block";
-        moonIcon.style.display = "none";
+        if (sunIcon) sunIcon.style.display = "block";
+        if (moonIcon) moonIcon.style.display = "none";
     }
 }
 
